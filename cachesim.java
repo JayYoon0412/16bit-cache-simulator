@@ -123,63 +123,65 @@ public class cachesim {
     }
 
     public static String storeData(String add, int bytes, int blockOffset, int index, String tag, String storeData) {   
-        
-        boolean inCache = false; 
         for (int i=0; i<cache[index].blocks.size(); i++) {
             if(((cache[index].blocks.get(i).tag).equals(tag))&&((cache[index].blocks.get(i).validBit)==1)) {
-                String newInfo = cache[index].blocks.get(i).data.substring(0, 2*blockOffset);
-                newInfo += storeData;
-                newInfo += cache[index].blocks.get(i).data.substring(2*blockOffset+bytes*2);
-                cache[index].blocks.get(i).data = newInfo;
-                cache[index].blocks.get(i).counter = time;
-                cache[index].blocks.get(i).validBit = 1;
+                writeToBlock(bytes, blockOffset, storeData, cache[index].blocks.get(i));
+                if (!writeBack) {
+                    writeToMemory(add, bytes, storeData);
+                    return "hit";
+                }
                 if (writeBack) {
                     cache[index].blocks.get(i).dirtyBit = 1;
+                    return "hit";
                 }
-                inCache = true;
             }
         }
         if (!writeBack) {
-            writeToMemory(add, bytes, blockOffset, index, tag, storeData);
+            writeToMemory(add, bytes, storeData);
+            return "miss";
         }
         //if write back, bring block to cache if not in cache already
-        
-    /* int decAddress = Integer.parseInt(binaryToDecimal(add));
-        for (int j=0; j<bytes; j++) {
-            newInfo += mainMemory[decAddress+j];
-        }
-        int startPoint = (decAddress / blockSize)*blockSize ;
-        String blockInfo = "";
-        for (int k=0; k<blockSize; k++) {
-            blockInfo += mainMemory[startPoint+k];
-        }
-        Block b = new Block(tag, 1, 0, blockInfo, time);
-        if (cache[index].blocks.size()>=assoc) {
-            int LRUindex = removeLRU(cache[index].blocks);
-            cache[index].blocks.remove(LRUindex);
-        }
-        cache[index].blocks.add(b);
-    */
-        if (inCache) { 
-            return "hit";
+        if (writeBack) {
+            int decAddress = Integer.parseInt(binaryToDecimal(add));
+            int startingPoint = (decAddress/blockSize)*blockSize;
+            String blockInfo = "";
+            for (int k=0; k<blockSize; k++) {
+                blockInfo += mainMemory[startingPoint+k];
+            }
+            Block wb = new Block(tag, 1, 1, blockInfo, time);
+            if (cache[index].blocks.size()>=assoc) {
+                int LRUindex = removeLRU(cache[index].blocks);
+                if (writeBack&&cache[index].blocks.get(LRUindex).dirtyBit==1) {
+                    Block lru = cache[index].blocks.get(LRUindex);
+                    String addGen = generateAddress(index, lru.tag);
+                    writeToMemory(addGen, blockSize, lru.data);
+                }
+                cache[index].blocks.remove(LRUindex);
+            }
+            writeToBlock(bytes, blockOffset, storeData, wb);
+            cache[index].blocks.add(wb);
         }
         return "miss";
     }
 
-    public static void writeToMemory(String add, int bytes, int blockOffset, int index, String tag, String storeData) {
+    public static void writeToMemory(String add, int bytes, String storeData) {
         int decAddress = Integer.parseInt(binaryToDecimal(add));
         for (int i=0; i<bytes; i++) {
             String byteStore = storeData.substring(i*2, i*2+2);
             mainMemory[decAddress+i] = byteStore;
         }
     }
+    public static void writeToBlock(int bytes, int blockOffset, String storeData, Block b) {
+            String newInfo = b.data.substring(0, 2*blockOffset);
+            newInfo += storeData;
+            newInfo += b.data.substring(2*blockOffset+bytes*2);
+            b.data = newInfo;
+            b.counter = time;
+            b.validBit = 1;
+            b.dirtyBit = 1;
+    }
 
-    public static String loadData(String add, int bytes, int blockOffset, int index, String tag) {
-        if (cache[index].blocks.size()>assoc) {
-            int LRUindex = removeLRU(cache[index].blocks);
-            cache[index].blocks.remove(LRUindex);
-        }
-        
+    public static String loadData(String add, int bytes, int blockOffset, int index, String tag) {   
         for (int i=0; i<cache[index].blocks.size(); i++) {
             if(((cache[index].blocks.get(i).tag).equals(tag))&&((cache[index].blocks.get(i).validBit)==1)) {
                 cache[index].blocks.get(i).counter = time;
@@ -200,10 +202,28 @@ public class cachesim {
         if (cache[index].blocks.size()>=assoc) {
             int LRUindex = removeLRU(cache[index].blocks);
             //check if this block dirty bit is 1, and if so, write to memory by recreating address from the bits we have
+            if (writeBack&&cache[index].blocks.get(LRUindex).dirtyBit==1) {
+                Block lru = cache[index].blocks.get(LRUindex);
+                String addGen = generateAddress(index, lru.tag);
+                writeToMemory(addGen, blockSize, lru.data);
+            }
             cache[index].blocks.remove(LRUindex);
         }
         cache[index].blocks.add(b);
         return "miss"+" "+newInfo;
+    }
+
+    //generate binary address
+    public static String generateAddress(int index, String tag) {
+        String indexExtended = Integer.toBinaryString(index);
+        while (indexExtended.length()<indexSize) {
+            indexExtended = "0"+indexExtended;
+        }
+        String offsetExtended = "";
+        while (offsetExtended.length()<offsetSize) {
+            offsetExtended = "0"+offsetExtended;
+        }
+        return tag+indexExtended+offsetExtended;
     }
 
     public static int removeLRU(ArrayList<Block> bs) {
