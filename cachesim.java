@@ -123,22 +123,26 @@ public class cachesim {
     }
 
     public static String storeData(String add, int bytes, int blockOffset, int index, String tag, String storeData) {   
-        //just implementing write through, non-allocate...
+        
         boolean inCache = false; 
         for (int i=0; i<cache[index].blocks.size(); i++) {
             if(((cache[index].blocks.get(i).tag).equals(tag))&&((cache[index].blocks.get(i).validBit)==1)) {
-                String newInfo = cache[index].blocks.get(i).data.substring(0, blockOffset);
+                String newInfo = cache[index].blocks.get(i).data.substring(0, 2*blockOffset);
                 newInfo += storeData;
-                newInfo += cache[index].blocks.get(i).data.substring(blockOffset+storeData.length());
+                newInfo += cache[index].blocks.get(i).data.substring(2*blockOffset+bytes*2);
                 cache[index].blocks.get(i).data = newInfo;
                 cache[index].blocks.get(i).counter = time;
+                cache[index].blocks.get(i).validBit = 1;
                 if (writeBack) {
                     cache[index].blocks.get(i).dirtyBit = 1;
                 }
                 inCache = true;
             }
         }
-        writeToMemory(add, bytes, blockOffset, index, tag, storeData);
+        if (!writeBack) {
+            writeToMemory(add, bytes, blockOffset, index, tag, storeData);
+        }
+        //if write back, bring block to cache if not in cache already
         
     /* int decAddress = Integer.parseInt(binaryToDecimal(add));
         for (int j=0; j<bytes; j++) {
@@ -179,7 +183,7 @@ public class cachesim {
         for (int i=0; i<cache[index].blocks.size(); i++) {
             if(((cache[index].blocks.get(i).tag).equals(tag))&&((cache[index].blocks.get(i).validBit)==1)) {
                 cache[index].blocks.get(i).counter = time;
-                return "hit"+" "+cache[index].blocks.get(i).data.substring(blockOffset, 2*bytes+blockOffset);
+                return "hit"+" "+cache[index].blocks.get(i).data.substring(blockOffset*2, 2*bytes+2*blockOffset);
             }
         }
         String newInfo = "";
@@ -195,6 +199,7 @@ public class cachesim {
         Block b = new Block(tag, 1, 0, blockInfo, time);
         if (cache[index].blocks.size()>=assoc) {
             int LRUindex = removeLRU(cache[index].blocks);
+            //check if this block dirty bit is 1, and if so, write to memory by recreating address from the bits we have
             cache[index].blocks.remove(LRUindex);
         }
         cache[index].blocks.add(b);
